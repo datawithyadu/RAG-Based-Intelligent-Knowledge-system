@@ -1,9 +1,10 @@
-"""Ingestion: read PDFs from disk and put their text into the vector store."""
+"""Turn PDF files into indexed chunks in the vector store."""
 
 from pathlib import Path
 
 from pypdf import PdfReader
 
+from app.models.vector_store import VectorStore
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -13,53 +14,53 @@ class IngestError(Exception):
     """Raised when a document cannot be turned into usable text."""
 
 
-def extract_text(pdf_path: str | Path) -> str:
-    """Pull all text out of a PDF. Raises IngestError if it yields nothing usable."""
-    path = Path(pdf_path)
-    if not path.is_file():
-        raise IngestError(f"No such file: {path}")
+def extract_text(pdf_path: Path) -> str:
+    """Read every page of a PDF and return it as one string."""
+    reader = PdfReader(str(pdf_path))
 
-    try:
-        reader = PdfReader(path)
-        pages = [page.extract_text() or "" for page in reader.pages]
-    except Exception as e:
-        raise IngestError(f"Could not read {path.name}: {e}") from e
+    pages = []
+    for page in reader.pages:
+        pages.append(page.extract_text() or "")
 
     text = "\n".join(pages).strip()
 
     if not text:
         raise IngestError(
-            f"{path.name} produced no text - it is probably a scanned image, "
-            f"which needs OCR rather than text extraction."
+            f"No text found in {pdf_path.name} - it is probably a scanned image and needs OCR"
         )
 
-    logger.info("Extracted %s chars from %s (%s pages)", len(text), path.name, len(pages))
     return text
 
 
-def process_document(pdf_path: str | Path, store) -> int:
-    """Read one PDF and index it. Returns the number of parent chunks created."""
-    path = Path(pdf_path)
-    text = extract_text(path)
-    chunks = store.add_document(text, source=path.name)
-    logger.info("Processed %s -> %s chunks", path.name, chunks)
-    return chunks
+def process_document(pdf_path: str | Path, store: VectorStore) -> int:
+    """Extract one PDF and add it to the store. Returns the parent-chunk count."""
+    pdf_path = Path(pdf_path)
+
+    if not pdf_path.exists():
+        raise IngestError(f"File not found: {pdf_path}")
+
+    logger.info("Processing %s", pdf_path.name)
+    text = extract_text(pdf_path)
+    return store.add_document(text, source=pdf_path.name)
 
 
-def process_folder(folder: str | Path, store) -> dict[str, int | str]:
-    """Index every PDF in a folder. One bad file does not stop the rest."""
-    pdfs = sorted(Path(folder).glob("*.pdf"))
+def process_folder(folder: str | Path, store: VectorStore) -> dict[str, int | str]:
+    """Process every PDF in a folder. One bad file does not stop the rest."""
+    folder = Path(folder)
 
-    if not pdfs:
-        logger.warning("No PDFs found in %s", folder)
-        return {}
+    if not folder.exists():
+        raise IngestError(f"Folder not found: {folder}")
 
     results: dict[str, int | str] = {}
-    for pdf in pdfs:
+
+    for pdf_path in sorted(folder.glob("*.pdf")):
         try:
-            results[pdf.name] = process_document(pdf, store)
-        except IngestError as e:
-            logger.error("Skipped %s: %s", pdf.name, e)
-            results[pdf.name] = f"FAILED: {e}"
+            results[pdf_path.name] = process_document(pdf_path, store)
+        except Exception as e:
+            logger.error("Failed on %s: %s", pdf_path.name, e)
+            results[pdf_path.name] = f"FAILED - {e}"
+
+    if not results:
+        logger.warning("No PDFs found in %s", folder)
 
     return results

@@ -1,0 +1,23 @@
+{
+  "Agentic_AI paper1.pdf": [
+    "To represent\ntheSymbolic/Classicallineage, targeted terms included foundational concepts such as \"Cog-\nnitive architectures,\" \"BDI agent,\" \"SOAR,\" \"POMDP,\" \"symbolic planning,\" and \"multi-agent\nsystems\" (in its traditional sense).",
+    "Governance Anchoring:We embed ethical, accountability, and alignment challenges within\neach paradigm of our taxonomy to ensure that safety considerations are discussed in the\ncorrect technological context (Section 7).",
+    "These protocols are engineered to ensure\npredictable, verifiable, and fault-tolerant interactions, making them indispensable for critical sys-\ntems where correctness is paramount.",
+    "Importantly, these trends\nare not broad truisms about any generation of AI, but rather specific architectural responses to\nchallenges uniquely faced by large-scale, agentic systems.",
+    "Mapping them to PPAR or BDI obscures their true innovative mechanics, which\nare defined by prompt-driven stochasticity, not algorithmic symbol manipulation."
+  ],
+  "AgenticAI paper2.pdf": [
+    "However, as use cases increasingly demand con-\ntext retention, task interdependence, and adaptability across dynamic \nenvironments, the single-agent model proves insufficient [149,150].",
+    "While highly communicative, generative \nmodels fundamentally exhibit reactive behavior: they produce output \nonly when explicitly prompted and do not pursue goals autonomously \nor engage in self-initiated reasoning [99,100].",
+    "These frameworks will define accountability \nstructures, verification mechanisms, and safety constraints, especially \nin high-stakes domains involving autonomous decisions.",
+    "In multi-agent settings, account-\nability gaps emerge when multiple agents interact to produce \nan outcome, making it difficult to assign responsibility for er-\nrors or unintended consequences.",
+    "For instance, an AI customer support agent powered by GPT-4 can \ninterpret customer complaints, query backend systems via tool integra-\ntion, and respond in a contextually appropriate and emotionally aware \nmanner [84,85]."
+  ],
+  "AgenticAI paper3.pdf": [
+    "In a\nthird iteration, we conducted forward searches, focusing on citations and publications\nin top venues like NIPS, ICLR, and ICML, while also considering new arxiv.org papers.",
+    "Exploration and Exploitation: Unlike classical supervised or unsupervised learn-\ning where data is given, RL agents actively influence data collection through novel\nactions and observations—i.e., exploration.",
+    "However, this\nis somewhat oversimplified, as the construct of agents in AI is rather old and goes\nbeyond agents being a technical component (Russell and Norvig, 2021).",
+    "However, many general and more detailed, technical aspects expressed\nin our and other works assume the usage of a foundation model as otherwise many\nclaims are not substantiated.",
+    "Although early GenAI demonstrated\nbasic reasoning and tool usage capabilities, it remained highly limited—similar to\nearly AI systems like ELIZA in the 1960s, which could chat with humans but in an\nunsophisticated manner."
+  ]
+}

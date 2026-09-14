@@ -221,3 +221,8 @@ __marimo__/
 chroma_db/
 data/
 .ipynb_checkpoints/
+
+# project artifacts
+vector_db/
+logs/
+Claude outputs/
