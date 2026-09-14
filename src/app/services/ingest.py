@@ -1,23 +1,10 @@
-from app.models.vector_store import VectorStore
-from app.services.storage_service import S3Storage
-from app.services.llm_service import llm_service
-
-from app.config import Config
-import os
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from pypdf import PdfReader
-import logging
-import sys
+"""Ingestion: read PDFs from disk and put their text into the vector store."""
 
 from pathlib import Path
-from logging.handlers import RotatingFileHandler # Caps the logging from growing out of control
-'''initialize services'''
-vector_store = VectorStore(Config.VECTOR_DB_PATH)
-storage_service = S3Storage()
-llm_service = llm_service(vector_store)
 
-'''Process document'''
-"""Ingestion: read PDFs from disk and put their text into the vector store."""
+from pypdf import PdfReader
+
+from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -42,7 +29,7 @@ def extract_text(pdf_path: str | Path) -> str:
 
     if not text:
         raise IngestError(
-            f"{path.name} produced no text — it is probably a scanned image, "
+            f"{path.name} produced no text - it is probably a scanned image, "
             f"which needs OCR rather than text extraction."
         )
 
@@ -76,15 +63,3 @@ def process_folder(folder: str | Path, store) -> dict[str, int | str]:
             results[pdf.name] = f"FAILED: {e}"
 
     return results
-   
-
-
-    
-
-
-
-
-
-
-
-

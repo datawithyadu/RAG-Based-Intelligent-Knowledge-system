@@ -1,61 +1,68 @@
-from pathlib import Path
-import boto3
-from botocore.exceptions import ClientError, NoCredentialsError
-from boto3.exceptions import S3UploadFailedError
-from app.config import Config
+"""S3 storage: move source documents between the bucket and local disk."""
 
-class StorageService:
+from pathlib import Path
+
+import boto3
+from boto3.exceptions import S3UploadFailedError
+from botocore.exceptions import ClientError, NoCredentialsError
+
+from app.config import Config
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+class S3Storage:
+    """Reads and writes source documents in an S3 bucket."""
+
     def __init__(self):
         self.s3_client = boto3.client(
-            's3',
-            aws_secret_access_key = Config.AWS_SECRET_ACCESS_KEY,
-            aws_access_key_id = Config.AWS_ACCESS_KEY_ID,
-            aws_region = Config.AWS_REGION
-            )
-        '''The above key will try to authentication with aws s3 bucket'''
-
-        '''Now, let's initialize the bucket'''
+            "s3",
+            aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
+            region_name=Config.AWS_REGION,
+        )
         self.bucket = Config.AWS_BUCKET_NAME
 
-        '''Upload method - My PDFs are in data/. 
-        My project talks to AWS, uploads them to the S3 bucket, 
-        and stores each one under a key I choose — which is the address I'll use to find it again.'''
-
-    def upload_file(self,local_path:str, key: str):
-         """Upload a file from disk. Returns the S3 key it was stored under."""
-         try:
+    def upload_file(self, local_path: str, key: str) -> str | None:
+        """Upload a file from disk. Returns the key on success, None on failure."""
+        try:
             self.s3_client.upload_file(local_path, self.bucket, key)
+            logger.info("Uploaded %s -> s3://%s/%s", local_path, self.bucket, key)
             return key
-         except FileNotFoundError:
-                print(f"File not found: {local_path}")
-                return None
-         except NoCredentialsError:
-                print("AWS credentials not available.")
-                return None
-         except ClientError as e:
-                print(f"Client error occurred: {e}")
-                return None  
-         except S3UploadFailedError as e:
-              print(f"Upload faild{e}")
-              return None                         
+        except FileNotFoundError:
+            logger.error("File not found: %s", local_path)
+        except NoCredentialsError:
+            logger.error("AWS credentials not available")
+        except (S3UploadFailedError, ClientError) as e:
+            logger.error("Upload of %s failed: %s", key, e)
+        return None
 
-    def download_file(self, key: str, local_path: str):
-        """Download one object from S3 to disk.
-
-        Returns the local Path on success, or None if it failed.
-        """
+    def download_file(self, key: str, local_path: str) -> Path | None:
+        """Download one object to disk. Returns the local Path, or None on failure."""
         destination = Path(local_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         try:
             self.s3_client.download_file(self.bucket, key, str(destination))
+            logger.info("Downloaded s3://%s/%s -> %s", self.bucket, key, destination)
             return destination
         except NoCredentialsError:
-            print("AWS credentials not available.")
+            logger.error("AWS credentials not available")
         except ClientError as e:
             code = e.response["Error"]["Code"]
             if code in ("404", "NoSuchKey"):
-                print(f"Not in bucket: {key}")
+                logger.error("Not in bucket: %s", key)
             else:
-                print(f"Download failed ({code}): {key}")
+                logger.error("Download of %s failed (%s)", key, code)
         return None
-             
+
+    def list_pdfs(self, prefix: str = "") -> list[str]:
+        """Every PDF key in the bucket, following pagination."""
+        keys: list[str] = []
+        paginator = self.s3_client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                if obj["Key"].lower().endswith(".pdf"):
+                    keys.append(obj["Key"])
+        logger.info("Found %s PDFs in s3://%s/%s", len(keys), self.bucket, prefix)
+        return keys

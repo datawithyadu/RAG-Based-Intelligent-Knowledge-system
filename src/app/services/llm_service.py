@@ -1,35 +1,46 @@
+"""LLM service: turn a question plus retrieved chunks into an answer."""
+
+from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
-from langchain_classic.chains import (create_history_aware_retriever,create_retrieval_chain)
-from langchain_classic.memory import ConversationBufferWindowMemory
+
 from app.config import Config
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+PROMPT = """Answer the question using only the context below.
+If the context does not contain the answer, say so plainly - do not invent one.
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:"""
 
 
-class llm_service:
-    '''Whenever an LLMService object is created, set it up with an LLM client.'''
-    def __init__(self, vector_store):
+class LLMService:
+    """Holds one LLM client, reused for every question."""
+
+    def __init__(self, model: str | None = None, temperature: float | None = None):
         self.llm = ChatOpenAI(
-            temperature=0.7, 
-            model= "gpt-3.5-turbo",
-            api_key= Config.OPENAI_API_KEY
+            model=model or Config.CHAT_MODEL,
+            temperature=Config.TEMPERATURE if temperature is None else temperature,
+            api_key=Config.OPENAI_API_KEY,
         )
-        self.memory = ConversationBufferWindowMemory(
-            k=3, 
-            return_messages = True,
-            memory_key = "chat_history"
-            )
-        
-        self.chain = create_retrieval_chain(
-            llm =self.llm,
-            retriever = create_history_aware_retriever(
-                vector_store = vector_store,
-                memory = self.memory
-            )
-            )
-        
-    def get_response(self,query):
-        try:
-            response = self.chain.run(input= query)
-            return response["answer"]
-        except Exception as e:
-            print(f"Error occurred while fetching LLM response: {e}")
-            return "Sorry, I encountered an error while processing your request."
+
+    def answer(self, question: str, chunks: list[Document]) -> str:
+        """Build a prompt from the retrieved chunks and ask the model."""
+        if not chunks:
+            logger.warning("No chunks retrieved for: %s", question)
+            return "I could not find anything relevant in the documents."
+
+        context = "\n\n---\n\n".join(
+            f"[{c.metadata.get('source', 'unknown')}]\n{c.page_content}" for c in chunks
+        )
+        prompt = PROMPT.format(context=context, question=question)
+
+        logger.info("Asking %s with %s chunks (%s chars of context)",
+                    self.llm.model_name, len(chunks), len(context))
+
+        return self.llm.invoke(prompt).content
