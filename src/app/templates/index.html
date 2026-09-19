@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG Knowledge System</title>
+<style>
+  :root {
+    --bg: #fbfbfa;  --panel: #ffffff;  --ink: #1c1c1a;
+    --muted: #6b6b66;  --line: #e3e3df;  --accent: #1c1c1a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17171a;  --panel: #202024;  --ink: #ececeb;
+      --muted: #9a9a95;  --line: #32323a;  --accent: #ececeb;
+    }
+  }
+  /* ...layout rules for body, form, textarea, button, details... */
+</style>
+</head>
+
+<body>
+<main>
+  <header>
+    <h1>RAG Knowledge System</h1>
+    <p class="sub">Ask a question about the indexed papers. <b id="status">checking…</b></p>
+  </header>
+
+  <form id="form">
+    <textarea id="q" placeholder="What does the literature say about multi-agent coordination?"></textarea>
+    <div class="row">
+      <button id="go" type="submit">Ask</button>
+      <label>sources
+        <select id="topk">
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+          <option value="5">5</option>
+        </select>
+      </label>
+    </div>
+  </form>
+
+  <div id="answer"></div>
+  <h2 id="srcHead"></h2>
+  <div id="sources"></div>
+</main>
+
+fetch("/health")
+  .then(r => r.json())
+  .then(d => {
+    status.textContent = d.chunks
+      ? `${d.chunks.toLocaleString()} chunks indexed`
+      : "no documents indexed yet";
+  })
+  .catch(() => { status.textContent = "server not reachable"; });
+
+  function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function ask(text) {
+  go.disabled = true;
+  answer.className = "thinking";
+  answer.textContent = "Searching the papers…";
+  sources.innerHTML = "";
+  srcHead.textContent = "";
+
+  try {
+    const res = await fetch("/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: text, top_k: Number(topk.value) })
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `Server returned ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    answer.className = "";
+    answer.textContent = data.answer;
+
+    if (data.sources?.length) {
+      srcHead.textContent = `Sources (${data.sources.length})`;
+      sources.innerHTML = data.sources.map((s, i) => `
+        <details>
+          <summary>${i + 1}. ${escapeHtml(s.source)}</summary>
+          <p>${escapeHtml(s.preview)}</p>
+        </details>`).join("");
+    }
+  } catch (err) {
+    answer.className = "error";
+    answer.textContent = err.message;
+  } finally {
+    go.disabled = false;
+  }
+}
+
+form.addEventListener("submit", e => {
+  e.preventDefault();
+  const text = q.value.trim();
+  if (text) ask(text);
+});
+
+q.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") form.requestSubmit();
+});

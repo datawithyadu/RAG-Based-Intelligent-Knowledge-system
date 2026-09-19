@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG Knowledge System</title>
+<style>
+  :root {
+    --bg: #fbfbfa;
+    --panel: #ffffff;
+    --ink: #1c1c1a;
+    --muted: #6b6b66;
+    --line: #e3e3df;
+    --accent: #1c1c1a;
+    --ok: #2d7a4f;
+    --bad: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17171a;
+      --panel: #202024;
+      --ink: #ececeb;
+      --muted: #9a9a95;
+      --line: #32323a;
+      --accent: #ececeb;
+      --ok: #6fbf8e;
+      --bad: #e8756a;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 2.5rem 1rem 4rem;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  main { max-width: 720px; margin: 0 auto; }
+
+  header { margin-bottom: 1.5rem; }
+  h1 { margin: 0 0 .3rem; font-size: 1.25rem; letter-spacing: -.01em; }
+  .sub { margin: 0; color: var(--muted); font-size: .875rem; }
+  .sub b { color: var(--ink); font-weight: 600; }
+
+  form { display: flex; flex-direction: column; gap: .7rem; }
+
+  textarea {
+    width: 100%;
+    padding: .85rem 1rem;
+    font: inherit;
+    color: inherit;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    resize: vertical;
+    min-height: 5.5rem;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+  .row { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; }
+
+  button {
+    padding: .6rem 1.4rem;
+    font: inherit;
+    font-weight: 500;
+    color: var(--bg);
+    background: var(--accent);
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  button.ghost {
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--line);
+  }
+  button:disabled { opacity: .45; cursor: default; }
+
+  label { color: var(--muted); font-size: .875rem; }
+  select {
+    font: inherit; color: inherit; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px; padding: .25rem .4rem;
+  }
+
+  /* ---- upload strip ---- */
+  .upload {
+    display: flex; align-items: center; gap: .8rem; flex-wrap: wrap;
+    margin-bottom: 1.5rem; padding: .8rem 1rem;
+    background: var(--panel);
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+  }
+  .upload.drag { border-color: var(--accent); border-style: solid; }
+  .upload .name { color: var(--muted); font-size: .875rem; flex: 1; min-width: 8rem; }
+  .upload .msg { font-size: .875rem; }
+  .upload .msg.ok { color: var(--ok); }
+  .upload .msg.bad { color: var(--bad); }
+  input[type=file] { display: none; }
+
+  #answer {
+    margin-top: 2rem;
+    padding: 1.2rem 1.35rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    white-space: pre-wrap;
+  }
+  #answer:empty { display: none; }
+  #answer.error { border-color: var(--bad); color: var(--bad); }
+
+  .thinking { color: var(--muted); font-style: italic; }
+
+  h2 {
+    margin: 2rem 0 .8rem;
+    font-size: .78rem;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  h2:empty { display: none; }
+
+  details {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: .7rem .95rem;
+    margin-bottom: .6rem;
+  }
+  summary { cursor: pointer; font-weight: 500; font-size: .9rem; }
+  details p { margin: .7rem 0 0; color: var(--muted); font-size: .875rem; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>RAG Knowledge System</h1>
+    <p class="sub">Ask a question about the indexed papers. <b id="status">checking…</b></p>
+  </header>
+
+  <div class="upload" id="drop">
+    <button class="ghost" id="pick" type="button">Choose PDF</button>
+    <input type="file" id="fileInput" accept="application/pdf,.pdf">
+    <span class="name" id="fileName">or drop one here</span>
+    <button id="uploadBtn" type="button" disabled>Upload &amp; indexing…</button>
+    <span class="msg" id="uploadMsg"></span>
+  </div>
+
+  <form id="form">
+    <textarea id="q" placeholder="What does the literature say about multi-agent coordination?"></textarea>
+    <div class="row">
+      <button id="go" type="submit">Ask</button>
+      <label>sources
+        <select id="topk">
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+          <option value="5">5</option>
+        </select>
+      </label>
+    </div>
+  </form>
+
+  <div id="answer"></div>
+  <h2 id="srcHead"></h2>
+  <div id="sources"></div>
+</main>
+
+<script>
+const form       = document.getElementById("form");
+const q          = document.getElementById("q");
+const go         = document.getElementById("go");
+const topk       = document.getElementById("topk");
+const answer     = document.getElementById("answer");
+const sources    = document.getElementById("sources");
+const srcHead    = document.getElementById("srcHead");
+const status     = document.getElementById("status");
+
+const drop       = document.getElementById("drop");
+const pick       = document.getElementById("pick");
+const fileInput  = document.getElementById("fileInput");
+const fileName   = document.getElementById("fileName");
+const uploadBtn  = document.getElementById("uploadBtn");
+const uploadMsg  = document.getElementById("uploadMsg");
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---- header: how many chunks are indexed ----
+async function refreshStatus() {
+  try {
+    const d = await (await fetch("/health")).json();
+    status.textContent = d.chunks
+      ? `${d.chunks.toLocaleString()} chunks indexed`
+      : "no documents indexed yet";
+  } catch {
+    status.textContent = "server not reachable";
+  }
+}
+refreshStatus();
+
+// ---- upload ----
+let chosen = null;
+
+function setChosen(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".pdf")) {
+    uploadMsg.className = "msg bad";
+    uploadMsg.textContent = "PDFs only";
+    return;
+  }
+  chosen = file;
+  fileName.textContent = `${file.name} (${(file.size / 1048576).toFixed(1)} MB)`;
+  uploadBtn.disabled = false;
+  uploadMsg.textContent = "";
+}
+
+pick.onclick = () => fileInput.click();
+fileInput.onchange = () => setChosen(fileInput.files[0]);
+
+// Drag and drop. preventDefault on dragover is what stops the browser
+// from navigating away to open the file itself.
+["dragenter", "dragover"].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("drag"); }));
+["dragleave", "drop"].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("drag"); }));
+drop.addEventListener("drop", e => setChosen(e.dataTransfer.files[0]));
+
+uploadBtn.onclick = async () => {
+  if (!chosen) return;
+
+  uploadBtn.disabled = true;
+  uploadMsg.className = "msg";
+  uploadMsg.textContent = "indexing… this can take a minute";
+
+  // FormData sends multipart/form-data. Do NOT set Content-Type yourself -
+  // the browser adds the boundary marker that the server needs to parse it.
+  const body = new FormData();
+  body.append("file", chosen);
+
+  try {
+    const res = await fetch("/upload", { method: "POST", body });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) throw new Error(data.detail || `Server returned ${res.status}`);
+
+    uploadMsg.className = "msg ok";
+    uploadMsg.textContent = `${data.filename} indexed - ${data.parents} sections`;
+    fileName.textContent = "or drop one here";
+    chosen = null;
+    fileInput.value = "";
+    refreshStatus();
+  } catch (err) {
+    uploadMsg.className = "msg bad";
+    uploadMsg.textContent = err.message;
+    uploadBtn.disabled = false;
+  }
+};
+
+// ---- ask ----
+async function ask(text) {
+  go.disabled = true;
+  answer.className = "thinking";
+  answer.textContent = "Searching the papers…";
+  sources.innerHTML = "";
+  srcHead.textContent = "";
+
+  try {
+    const res = await fetch("/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: text, top_k: Number(topk.value) })
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `Server returned ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    answer.className = "";
+    answer.textContent = data.answer;
+
+    if (data.sources?.length) {
+      srcHead.textContent = `Sources (${data.sources.length})`;
+      sources.innerHTML = data.sources.map((s, i) => `
+        <details>
+          <summary>${i + 1}. ${escapeHtml(s.source)}</summary>
+          <p>${escapeHtml(s.preview)}</p>
+        </details>`).join("");
+    }
+  } catch (err) {
+    answer.className = "error";
+    answer.textContent = err.message;
+  } finally {
+    go.disabled = false;
+  }
+}
+
+form.addEventListener("submit", e => {
+  e.preventDefault();
+  const text = q.value.trim();
+  if (text) ask(text);
+});
+
+// Ctrl/Cmd + Enter submits, so you don't have to reach for the mouse.
+q.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") form.requestSubmit();
+});
+</script>
+</body>
+</html>
